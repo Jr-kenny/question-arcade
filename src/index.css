@@ -1,0 +1,10 @@
+/* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Ensure smooth transitions for the UI */
+body {
+  font-family: 'Inter', sans-serif;
+  transition: background-color 0.3s ease;
+}
