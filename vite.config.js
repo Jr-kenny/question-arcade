@@ -5,7 +5,12 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    // Allows the server to be accessible externally (useful for Codespaces)
-    host: true
+    proxy: {
+      '/api': {
+        target: 'https://studio.genlayer.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, '/api')
+      }
+    }
   }
 })
