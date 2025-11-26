@@ -1,7 +1,7 @@
 import { useContractRead } from 'wagmi'
 import { QUIZ_CONTRACT_ADDRESS } from '../contract/address'
 import { QUIZ_CONTRACT_ABI } from '../contract/abi'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export default function StudyMaterial({ difficulty, customTopic, onQuizGenerated, onStartQuiz }) {
   const [isStarting, setIsStarting] = useState(false)
@@ -18,26 +18,32 @@ export default function StudyMaterial({ difficulty, customTopic, onQuizGenerated
     functionName: 'get_quiz_questions',
   })
 
-  // Parse the materials data
+  // Parse the materials data safely
   let materials = ''
-  if (materialsData) {
-    try {
-      const parsed = JSON.parse(materialsData)
-      materials = parsed.materials
-    } catch (error) {
-      console.error('Error parsing materials:', error)
+  useEffect(() => {
+    if (materialsData) {
+      try {
+        // If contract returns plain string, just use it directly
+        const parsed = typeof materialsData === 'string' ? JSON.parse(materialsData) : materialsData
+        const content = parsed.materials ?? parsed
+        onQuizGenerated(content)
+      } catch (error) {
+        console.error('Error parsing materials:', error)
+        onQuizGenerated(materialsData) // fallback: pass raw data
+      }
     }
-  }
+  }, [materialsData, onQuizGenerated])
 
   const handleStartQuiz = async () => {
     setIsStarting(true)
-    // If we haven't fetched questions yet, we wait for them
     if (questionsData) {
       try {
-        const parsed = JSON.parse(questionsData)
-        onStartQuiz(parsed.questions)
+        const parsed = typeof questionsData === 'string' ? JSON.parse(questionsData) : questionsData
+        const quizQuestions = parsed.questions ?? parsed
+        onStartQuiz(quizQuestions)
       } catch (error) {
         console.error('Error parsing questions:', error)
+        onStartQuiz(questionsData) // fallback: pass raw data
       }
     }
   }
@@ -59,8 +65,10 @@ export default function StudyMaterial({ difficulty, customTopic, onQuizGenerated
 
       <div className="bg-gray-800 bg-opacity-50 rounded-lg p-6 max-h-[60vh] overflow-y-auto">
         <div className="prose prose-invert max-w-none">
-          {materials ? (
-            <pre className="whitespace-pre-wrap font-sans">{materials}</pre>
+          {materialsData ? (
+            <pre className="whitespace-pre-wrap font-sans">
+              {materials || 'No materials available.'}
+            </pre>
           ) : (
             <p>No materials available.</p>
           )}

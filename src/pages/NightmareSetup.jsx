@@ -1,0 +1,93 @@
+import React, { useState } from 'react'
+import { useContractWrite, useWaitForTransactionReceipt } from 'wagmi'
+import { QUIZ_CONTRACT_ADDRESS } from '../contract/address'
+import { QUIZ_CONTRACT_ABI } from '../contract/abi'
+
+export default function NightmareSetup({ onBack, onQuizGenerated }) {
+  const [customTopic, setCustomTopic] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+
+  // Correct usage of useContractWrite
+  const { data, error, writeContract } = useContractWrite()
+
+  useWaitForTransactionReceipt({
+    hash: data?.hash,
+    onSuccess: () => {
+      setIsLoading(false)
+      onQuizGenerated()
+    },
+    onError: (err) => {
+      setIsLoading(false)
+      console.error('❌ Transaction failed:', err)
+    },
+  })
+
+  const handleGenerateQuiz = () => {
+    if (!customTopic.trim()) {
+      alert('Please enter a topic for nightmare mode')
+      return
+    }
+    setIsLoading(true)
+    try {
+      writeContract({
+        address: QUIZ_CONTRACT_ADDRESS,
+        abi: QUIZ_CONTRACT_ABI,
+        functionName: 'generate_quiz',
+        args: ['nightmare', customTopic],
+        gas: BigInt(500000), // ✅ added safe gas override
+      })
+      console.log('✅ Nightmare writeContract called successfully')
+    } catch (err) {
+      setIsLoading(false)
+      console.error('❌ Error calling nightmare writeContract:', err)
+    }
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      <h1 className="text-4xl font-bold text-center mb-8 bg-gradient-to-r from-purple-400 to-red-400 bg-clip-text text-transparent">
+        Nightmare Mode
+      </h1>
+      
+      <div className="bg-white/5 rounded-2xl p-8 backdrop-blur-sm border border-white/10">
+        <h2 className="text-2xl font-bold mb-4 text-center">Enter Your Custom Topic</h2>
+        <p className="text-gray-400 text-center mb-6">
+          Nightmare mode will generate 50 challenging questions about your chosen topic
+        </p>
+        
+        <input
+          type="text"
+          value={customTopic}
+          onChange={(e) => setCustomTopic(e.target.value)}
+          placeholder="e.g., Quantum Physics, Ancient History, Machine Learning, Astrophysics..."
+          className="w-full p-4 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 mb-6"
+        />
+        
+        <div className="flex gap-4">
+          <button
+            onClick={onBack}
+            className="flex-1 bg-white/10 hover:bg-white/20 px-6 py-3 rounded-xl border border-white/20 transition-colors"
+          >
+            Back to Difficulties
+          </button>
+          <button
+            onClick={handleGenerateQuiz}
+            disabled={isLoading || !customTopic.trim()}
+            className="flex-1 bg-gradient-to-r from-purple-600 to-red-600 hover:from-purple-700 hover:to-red-700 disabled:from-gray-600 disabled:to-gray-600 py-3 rounded-xl font-bold transition-all duration-200"
+          >
+            {isLoading ? 'Generating Quiz...' : 'Generate Nightmare Quiz'}
+          </button>
+        </div>
+      </div>
+
+      {isLoading && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-gray-800 p-8 rounded-2xl text-center border border-white/10">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
+            <p className="text-white text-lg">Generating your nightmare quiz... This may take a moment.</p>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

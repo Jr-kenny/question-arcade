@@ -9,12 +9,10 @@ export default function Quiz({ questions, onQuizSubmit }) {
   const [timeLeft, setTimeLeft] = useState(20)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const { write: submitQuiz, data: submitData } = useContractWrite({
-    address: QUIZ_CONTRACT_ADDRESS,
-    abi: QUIZ_CONTRACT_ABI,
-    functionName: 'submit_quiz',
-  })
+  // Correct usage of useContractWrite
+  const { data: submitData, error, writeContract } = useContractWrite()
 
+  // Read results after submission
   const { data: resultsData } = useContractRead({
     address: QUIZ_CONTRACT_ADDRESS,
     abi: QUIZ_CONTRACT_ABI,
@@ -27,16 +25,21 @@ export default function Quiz({ questions, onQuizSubmit }) {
     onSuccess: () => {
       // Results will be available via the read hook
     },
+    onError: (err) => {
+      setIsSubmitting(false)
+      console.error('❌ Transaction failed:', err)
+    },
   })
 
   useEffect(() => {
     if (resultsData) {
       try {
-        const results = JSON.parse(resultsData)
-        onQuizSubmit(selectedAnswers, results)
+        // ✅ Don’t force JSON.parse unless your contract returns JSON
+        // If resultsData is already an object/array, just pass it through
+        onQuizSubmit(selectedAnswers, resultsData)
         setIsSubmitting(false)
       } catch (error) {
-        console.error('Error parsing results:', error)
+        console.error('Error handling results:', error)
       }
     }
   }, [resultsData, onQuizSubmit, selectedAnswers])
@@ -73,7 +76,19 @@ export default function Quiz({ questions, onQuizSubmit }) {
 
   const handleSubmit = () => {
     setIsSubmitting(true)
-    submitQuiz({ args: [selectedAnswers] })
+    try {
+      writeContract({
+        address: QUIZ_CONTRACT_ADDRESS,
+        abi: QUIZ_CONTRACT_ABI,
+        functionName: 'submit_quiz',
+        args: [selectedAnswers],
+        gas: BigInt(300000), // ✅ safe gas override
+      })
+      console.log('✅ submit_quiz called successfully')
+    } catch (err) {
+      setIsSubmitting(false)
+      console.error('❌ Error calling submit_quiz:', err)
+    }
   }
 
   if (!currentQuestion) {
@@ -82,7 +97,36 @@ export default function Quiz({ questions, onQuizSubmit }) {
 
   return (
     <div className="max-w-4xl mx-auto">
-      {/* ...rest of your JSX unchanged... */}
+      {/* Render your quiz UI here */}
+      <h2 className="text-2xl font-bold mb-4">{currentQuestion.question}</h2>
+      <ul>
+        {currentQuestion.answers.map((answer, index) => (
+          <li key={index}>
+            <button
+              onClick={() => handleAnswerSelect(index)}
+              className={`px-4 py-2 rounded-lg mb-2 ${
+                selectedAnswers[currentQuestionIndex] === index
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-700 text-gray-200'
+              }`}
+            >
+              {answer}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-4 flex justify-between items-center">
+        <span className="text-gray-400">Time left: {timeLeft}s</span>
+        <button
+          onClick={handleNextQuestion}
+          className="bg-green-600 hover:bg-green-700 px-6 py-2 rounded-lg text-white font-bold"
+        >
+          {currentQuestionIndex < questions.length - 1 ? 'Next' : 'Submit'}
+        </button>
+      </div>
+      {isSubmitting && (
+        <div className="mt-6 text-center text-gray-400">Submitting your quiz...</div>
+      )}
     </div>
   )
 }

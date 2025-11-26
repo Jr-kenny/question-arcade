@@ -1,19 +1,47 @@
 import React, { useState } from 'react'
+import { useContractWrite, useWaitForTransactionReceipt } from 'wagmi'
+import { QUIZ_CONTRACT_ADDRESS } from '../contract/address'
+import { QUIZ_CONTRACT_ABI } from '../contract/abi'
 
 export default function DifficultySelection({ onSelect }) {
   const [selectedDifficulty, setSelectedDifficulty] = useState(null)
   const [customTopic, setCustomTopic] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
+  const [isWaiting, setIsWaiting] = useState(false)
 
-  const handleDifficultyClick = async (difficulty) => {
+  const { data, error, writeContract } = useContractWrite()
+
+  useWaitForTransactionReceipt({
+    hash: data?.hash,
+    onSuccess: () => {
+      console.log('✅ Transaction successful, moving to study-material')
+      setIsWaiting(false)
+      onSelect(selectedDifficulty, customTopic)
+    },
+    onError: (err) => {
+      setIsWaiting(false)
+      console.error('❌ Transaction failed:', err)
+    },
+  })
+
+  const handleDifficultyClick = (difficulty) => {
     setSelectedDifficulty(difficulty)
+
     if (difficulty !== 'nightmare') {
-      setIsLoading(true)
-      // Simulate contract call delay
-      setTimeout(() => {
-        setIsLoading(false)
-        onSelect(difficulty, '')
-      }, 2000)
+      try {
+        writeContract({
+          address: QUIZ_CONTRACT_ADDRESS,
+          abi: QUIZ_CONTRACT_ABI,
+          functionName: 'generate_quiz',
+          args: [difficulty, ''],
+          gas: BigInt(300000),
+        })
+        setIsWaiting(true)
+        console.log('🚀 generate_quiz transaction submitted')
+      } catch (err) {
+        console.error('❌ Error calling writeContract:', err)
+      }
+    } else {
+      onSelect('nightmare', '')
     }
   }
 
@@ -22,11 +50,19 @@ export default function DifficultySelection({ onSelect }) {
       alert('Please enter a topic for nightmare mode')
       return
     }
-    setIsLoading(true)
-    setTimeout(() => {
-      setIsLoading(false)
-      onSelect('nightmare', customTopic)
-    }, 2000)
+    try {
+      writeContract({
+        address: QUIZ_CONTRACT_ADDRESS,
+        abi: QUIZ_CONTRACT_ABI,
+        functionName: 'generate_quiz',
+        args: ['nightmare', customTopic],
+        gas: BigInt(500000),
+      })
+      setIsWaiting(true)
+      console.log('🚀 Nightmare generate_quiz transaction submitted')
+    } catch (err) {
+      console.error('❌ Error calling nightmare writeContract:', err)
+    }
   }
 
   const difficultyConfig = {
@@ -67,19 +103,19 @@ export default function DifficultySelection({ onSelect }) {
           />
           <button
             onClick={handleNightmareGenerate}
-            disabled={isLoading}
+            disabled={isWaiting}
             className="mt-4 w-full bg-gradient-to-r from-purple-600 to-red-600 hover:from-purple-700 hover:to-red-700 disabled:from-gray-600 disabled:to-gray-600 py-4 rounded-xl font-bold text-lg transition-all duration-200"
           >
-            {isLoading ? 'Generating Quiz...' : 'Generate Quiz'}
+            {isWaiting ? 'Generating Quiz...' : 'Generate Quiz'}
           </button>
         </div>
       )}
 
-      {isLoading && (
+      {isWaiting && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center">
           <div className="bg-gray-800 p-8 rounded-2xl text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto mb-4"></div>
-            <p className="text-white text-lg">Generating your quiz... This may take a moment.</p>
+            <p className="text-white text-lg">Waiting for transaction confirmation...</p>
           </div>
         </div>
       )}

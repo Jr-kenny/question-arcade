@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAccount } from 'wagmi'
 import ConnectPage from './pages/ConnectPage'
 import DifficultySelection from './pages/DifficultySelection'
+import NightmareSetup from './pages/NightmareSetup' // Add this import
 import StudyMaterial from './pages/StudyMaterial'
 import Quiz from './pages/Quiz'
 import Results from './pages/Results'
@@ -34,7 +35,19 @@ function App() {
 
   const handleDifficultySelect = (difficulty, customTopic = '') => {
     setQuizData((prev) => ({ ...prev, difficulty, customTopic }))
-    setCurrentPage('study-material')
+    if (difficulty === 'nightmare') {
+      setCurrentPage('nightmare-setup') // Go to nightmare setup page
+    } else {
+      setCurrentPage('study-material') // Go directly to study materials for other difficulties
+    }
+  }
+
+  const handleNightmareQuizGenerated = () => {
+    setCurrentPage('study-material') // After nightmare quiz is generated, go to study materials
+  }
+
+  const handleBackFromNightmare = () => {
+    setCurrentPage('select-difficulty') // Go back to difficulty selection
   }
 
   const handleQuizGenerated = (materials) => {
@@ -82,6 +95,12 @@ function App() {
         {currentPage === 'connect' && <ConnectPage />}
         {currentPage === 'select-difficulty' && (
           <DifficultySelection onSelect={handleDifficultySelect} />
+        )}
+        {currentPage === 'nightmare-setup' && (
+          <NightmareSetup 
+            onBack={handleBackFromNightmare}
+            onQuizGenerated={handleNightmareQuizGenerated}
+          />
         )}
         {currentPage === 'study-material' && (
           <StudyMaterial
