@@ -1,67 +1,106 @@
 import React, { useState } from 'react'
-import { useContractWrite, useWaitForTransactionReceipt } from 'wagmi'
+import { createClient } from 'genlayer-js'
+import { studionet } from 'genlayer-js/chains'
+import { TransactionStatus } from 'genlayer-js/types'
 import { QUIZ_CONTRACT_ADDRESS } from '../contract/address'
-import { QUIZ_CONTRACT_ABI } from '../contract/abi'
+
+// ✅ Fix: request accounts properly instead of using selectedAddress
+async function getClient() {
+  const [account] = await window.ethereum.request({ method: 'eth_requestAccounts' })
+  return createClient({ chain: studionet, account })
+}
 
 export default function DifficultySelection({ onSelect }) {
   const [selectedDifficulty, setSelectedDifficulty] = useState(null)
   const [customTopic, setCustomTopic] = useState('')
   const [isWaiting, setIsWaiting] = useState(false)
 
-  const { data, error, writeContract } = useContractWrite()
-
-  useWaitForTransactionReceipt({
-    hash: data?.hash,
-    onSuccess: () => {
-      console.log('✅ Transaction successful, moving to study-material')
-      setIsWaiting(false)
-      onSelect(selectedDifficulty, customTopic)
-    },
-    onError: (err) => {
-      setIsWaiting(false)
-      console.error('❌ Transaction failed:', err)
-    },
-  })
-
-  const handleDifficultyClick = (difficulty) => {
+  const handleDifficultyClick = async (difficulty) => {
     setSelectedDifficulty(difficulty)
 
     if (difficulty !== 'nightmare') {
       try {
-        writeContract({
+        setIsWaiting(true)
+        console.log('🚀 Submitting generate_quiz transaction')
+
+        const client = await getClient()
+        const txHash = await client.writeContract({
           address: QUIZ_CONTRACT_ADDRESS,
-          abi: QUIZ_CONTRACT_ABI,
           functionName: 'generate_quiz',
           args: [difficulty, ''],
-          gas: BigInt(300000),
         })
-        setIsWaiting(true)
-        console.log('🚀 generate_quiz transaction submitted')
+
+        await client.waitForTransactionReceipt({
+          hash: txHash,
+          status: TransactionStatus.ACCEPTED,
+        })
+
+        // ✅ Fetch quiz data after confirmation
+        const mats = await client.readContract({
+          address: QUIZ_CONTRACT_ADDRESS,
+          functionName: 'get_quiz_materials',
+          args: [],
+        })
+        const qs = await client.readContract({
+          address: QUIZ_CONTRACT_ADDRESS,
+          functionName: 'get_quiz_questions',
+          args: [],
+        })
+
+        console.log('✅ Transaction confirmed, moving to study-material')
+        setIsWaiting(false)
+        // ✅ Pass parsed data to parent
+        onSelect(difficulty, '', JSON.parse(mats), JSON.parse(qs))
       } catch (err) {
-        console.error('❌ Error calling writeContract:', err)
+        setIsWaiting(false)
+        console.error('❌ Error calling generate_quiz:', err)
       }
     } else {
+      // Nightmare stays as you designed it
       onSelect('nightmare', '')
     }
   }
 
-  const handleNightmareGenerate = () => {
+  const handleNightmareGenerate = async () => {
     if (!customTopic.trim()) {
       alert('Please enter a topic for nightmare mode')
       return
     }
     try {
-      writeContract({
+      setIsWaiting(true)
+      console.log('🚀 Submitting nightmare generate_quiz transaction')
+
+      const client = await getClient()
+      const txHash = await client.writeContract({
         address: QUIZ_CONTRACT_ADDRESS,
-        abi: QUIZ_CONTRACT_ABI,
         functionName: 'generate_quiz',
         args: ['nightmare', customTopic],
-        gas: BigInt(500000),
       })
-      setIsWaiting(true)
-      console.log('🚀 Nightmare generate_quiz transaction submitted')
+
+      await client.waitForTransactionReceipt({
+        hash: txHash,
+        status: TransactionStatus.ACCEPTED,
+      })
+
+      // ✅ Fetch quiz data after confirmation
+      const mats = await client.readContract({
+        address: QUIZ_CONTRACT_ADDRESS,
+        functionName: 'get_quiz_materials',
+        args: [],
+      })
+      const qs = await client.readContract({
+        address: QUIZ_CONTRACT_ADDRESS,
+        functionName: 'get_quiz_questions',
+        args: [],
+      })
+
+      console.log('✅ Nightmare quiz confirmed, moving to study-material')
+      setIsWaiting(false)
+      // ✅ Pass parsed data to parent
+      onSelect('nightmare', customTopic, JSON.parse(mats), JSON.parse(qs))
     } catch (err) {
-      console.error('❌ Error calling nightmare writeContract:', err)
+      setIsWaiting(false)
+      console.error('❌ Error calling nightmare generate_quiz:', err)
     }
   }
 

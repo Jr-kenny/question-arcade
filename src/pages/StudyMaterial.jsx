@@ -1,50 +1,68 @@
-import { useContractRead } from 'wagmi'
-import { QUIZ_CONTRACT_ADDRESS } from '../contract/address'
-import { QUIZ_CONTRACT_ABI } from '../contract/abi'
 import { useState, useEffect } from 'react'
+import { createClient } from 'genlayer-js'
+import { studionet } from 'genlayer-js/chains'
+import { QUIZ_CONTRACT_ADDRESS } from '../contract/address'
+
+// ✅ Fix: request accounts properly
+async function getClient() {
+  const [account] = await window.ethereum.request({ method: 'eth_requestAccounts' })
+  return createClient({ chain: studionet, account })
+}
 
 export default function StudyMaterial({ difficulty, customTopic, onQuizGenerated, onStartQuiz }) {
+  const [materialsData, setMaterialsData] = useState(null)
+  const [questionsData, setQuestionsData] = useState(null)
+  const [materialsLoading, setMaterialsLoading] = useState(true)
+  const [questionsLoading, setQuestionsLoading] = useState(false)
   const [isStarting, setIsStarting] = useState(false)
 
-  const { data: materialsData, isLoading: materialsLoading } = useContractRead({
-    address: QUIZ_CONTRACT_ADDRESS,
-    abi: QUIZ_CONTRACT_ABI,
-    functionName: 'get_quiz_materials',
-  })
-
-  const { data: questionsData, isLoading: questionsLoading } = useContractRead({
-    address: QUIZ_CONTRACT_ADDRESS,
-    abi: QUIZ_CONTRACT_ABI,
-    functionName: 'get_quiz_questions',
-  })
-
-  // Parse the materials data safely
-  let materials = ''
+  // Load study materials when component mounts
   useEffect(() => {
-    if (materialsData) {
+    const fetchMaterials = async () => {
       try {
-        // If contract returns plain string, just use it directly
-        const parsed = typeof materialsData === 'string' ? JSON.parse(materialsData) : materialsData
+        setMaterialsLoading(true)
+        const client = await getClient()
+        const result = await client.readContract({
+          address: QUIZ_CONTRACT_ADDRESS,
+          functionName: 'get_quiz_materials',
+          args: [],
+        })
+        // ✅ Parse JSON safely
+        const parsed = typeof result === 'string' ? JSON.parse(result) : result
         const content = parsed.materials ?? parsed
+        setMaterialsData(content)
+        // ✅ Notify parent with parsed content
         onQuizGenerated(content)
       } catch (error) {
-        console.error('Error parsing materials:', error)
-        onQuizGenerated(materialsData) // fallback: pass raw data
+        console.error('❌ Error fetching materials:', error)
+      } finally {
+        setMaterialsLoading(false)
       }
     }
-  }, [materialsData, onQuizGenerated])
+    fetchMaterials()
+  }, [onQuizGenerated])
 
   const handleStartQuiz = async () => {
     setIsStarting(true)
-    if (questionsData) {
-      try {
-        const parsed = typeof questionsData === 'string' ? JSON.parse(questionsData) : questionsData
-        const quizQuestions = parsed.questions ?? parsed
-        onStartQuiz(quizQuestions)
-      } catch (error) {
-        console.error('Error parsing questions:', error)
-        onStartQuiz(questionsData) // fallback: pass raw data
-      }
+    try {
+      setQuestionsLoading(true)
+      const client = await getClient()
+      const result = await client.readContract({
+        address: QUIZ_CONTRACT_ADDRESS,
+        functionName: 'get_quiz_questions',
+        args: [],
+      })
+      const parsed = typeof result === 'string' ? JSON.parse(result) : result
+      const quizQuestions = parsed.questions ?? parsed
+      setQuestionsData(quizQuestions)
+      // ✅ Notify parent with parsed questions
+      onStartQuiz(quizQuestions)
+    } catch (error) {
+      console.error('❌ Error fetching questions:', error)
+      onStartQuiz([])
+    } finally {
+      setQuestionsLoading(false)
+      setIsStarting(false)
     }
   }
 
@@ -67,7 +85,7 @@ export default function StudyMaterial({ difficulty, customTopic, onQuizGenerated
         <div className="prose prose-invert max-w-none">
           {materialsData ? (
             <pre className="whitespace-pre-wrap font-sans">
-              {materials || 'No materials available.'}
+              {materialsData || 'No materials available.'}
             </pre>
           ) : (
             <p>No materials available.</p>

@@ -1,45 +1,63 @@
 import React, { useState } from 'react'
-import { useContractWrite, useWaitForTransactionReceipt } from 'wagmi'
+import { createClient } from 'genlayer-js'
+import { studionet } from 'genlayer-js/chains'
+import { TransactionStatus } from 'genlayer-js/types'
 import { QUIZ_CONTRACT_ADDRESS } from '../contract/address'
-import { QUIZ_CONTRACT_ABI } from '../contract/abi'
 
 export default function NightmareSetup({ onBack, onQuizGenerated }) {
   const [customTopic, setCustomTopic] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
-  // Correct usage of useContractWrite
-  const { data, error, writeContract } = useContractWrite()
+  async function getClient() {
+    const [account] = await window.ethereum.request({ method: 'eth_requestAccounts' })
+    return createClient({ chain: studionet, account })
+  }
 
-  useWaitForTransactionReceipt({
-    hash: data?.hash,
-    onSuccess: () => {
-      setIsLoading(false)
-      onQuizGenerated()
-    },
-    onError: (err) => {
-      setIsLoading(false)
-      console.error('❌ Transaction failed:', err)
-    },
-  })
-
-  const handleGenerateQuiz = () => {
+  const handleGenerateQuiz = async () => {
     if (!customTopic.trim()) {
       alert('Please enter a topic for nightmare mode')
       return
     }
+
     setIsLoading(true)
+
     try {
-      writeContract({
+      const client = await getClient()
+
+      // 1. Write transaction
+      const txHash = await client.writeContract({
         address: QUIZ_CONTRACT_ADDRESS,
-        abi: QUIZ_CONTRACT_ABI,
         functionName: 'generate_quiz',
         args: ['nightmare', customTopic],
-        gas: BigInt(500000), // ✅ added safe gas override
       })
-      console.log('✅ Nightmare writeContract called successfully')
+
+      // 2. Wait for confirmation
+      await client.waitForTransactionReceipt({
+        hash: txHash,
+        status: TransactionStatus.ACCEPTED,
+      })
+
+      console.log('✅ Nightmare quiz confirmed')
+
+      // 3. Read quiz data
+      const mats = await client.readContract({
+        address: QUIZ_CONTRACT_ADDRESS,
+        functionName: 'get_quiz_materials',
+        args: [],
+      })
+      const qs = await client.readContract({
+        address: QUIZ_CONTRACT_ADDRESS,
+        functionName: 'get_quiz_questions',
+        args: [],
+      })
+
+      // 4. Pass parsed data to parent
+      onQuizGenerated(customTopic, JSON.parse(mats), JSON.parse(qs))
+
+      setIsLoading(false)
     } catch (err) {
       setIsLoading(false)
-      console.error('❌ Error calling nightmare writeContract:', err)
+      console.error('❌ Error calling nightmare generate_quiz:', err)
     }
   }
 
@@ -48,13 +66,13 @@ export default function NightmareSetup({ onBack, onQuizGenerated }) {
       <h1 className="text-4xl font-bold text-center mb-8 bg-gradient-to-r from-purple-400 to-red-400 bg-clip-text text-transparent">
         Nightmare Mode
       </h1>
-      
+
       <div className="bg-white/5 rounded-2xl p-8 backdrop-blur-sm border border-white/10">
         <h2 className="text-2xl font-bold mb-4 text-center">Enter Your Custom Topic</h2>
         <p className="text-gray-400 text-center mb-6">
           Nightmare mode will generate 50 challenging questions about your chosen topic
         </p>
-        
+
         <input
           type="text"
           value={customTopic}
@@ -62,7 +80,7 @@ export default function NightmareSetup({ onBack, onQuizGenerated }) {
           placeholder="e.g., Quantum Physics, Ancient History, Machine Learning, Astrophysics..."
           className="w-full p-4 rounded-xl bg-white/10 border border-white/20 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 mb-6"
         />
-        
+
         <div className="flex gap-4">
           <button
             onClick={onBack}

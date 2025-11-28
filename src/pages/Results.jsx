@@ -1,6 +1,36 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
+import { createClient } from 'genlayer-js'
+import { studionet } from 'genlayer-js/chains'
+import { QUIZ_CONTRACT_ADDRESS } from '../contract/address'
 
-export default function Results({ results, onRestart }) {
+// Create client once (MetaMask signing assumed)
+const client = createClient({
+  chain: studionet,
+  account: window.ethereum.selectedAddress, // MetaMask injects address
+})
+
+export default function Results({ results: initialResults, onRestart }) {
+  const [results, setResults] = useState(initialResults)
+
+  useEffect(() => {
+    const fetchResults = async () => {
+      if (!initialResults) {
+        try {
+          const result = await client.readContract({
+            address: QUIZ_CONTRACT_ADDRESS,
+            functionName: 'get_quiz_results',
+            args: [],
+          })
+          const parsed = typeof result === 'string' ? JSON.parse(result) : result
+          setResults(parsed)
+        } catch (err) {
+          console.error('❌ Error fetching results:', err)
+        }
+      }
+    }
+    fetchResults()
+  }, [initialResults])
+
   if (!results) {
     return (
       <div className="max-w-4xl mx-auto text-center">
@@ -42,12 +72,14 @@ export default function Results({ results, onRestart }) {
               <div
                 key={index}
                 className={`p-4 rounded-xl border backdrop-blur-sm ${
-                  result.is_correct 
-                    ? 'bg-green-500/10 border-green-400/30' 
+                  result.is_correct
+                    ? 'bg-green-500/10 border-green-400/30'
                     : 'bg-red-500/10 border-red-400/30'
                 }`}
               >
-                <p className="font-bold text-white mb-2">Question {index + 1}: {result.question}</p>
+                <p className="font-bold text-white mb-2">
+                  Question {index + 1}: {result.question}
+                </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                   <div>
                     <span className="text-gray-400">Your answer: </span>

@@ -1,48 +1,21 @@
 import React, { useState, useEffect } from 'react'
-import { useContractWrite, useWaitForTransactionReceipt, useContractRead } from 'wagmi'
+import { createClient } from 'genlayer-js'
+import { studionet } from 'genlayer-js/chains'
+import { TransactionStatus } from 'genlayer-js/types'
 import { QUIZ_CONTRACT_ADDRESS } from '../contract/address'
-import { QUIZ_CONTRACT_ABI } from '../contract/abi'
+
+// Create client once (MetaMask signing assumed)
+const client = createClient({
+  chain: studionet,
+  account: window.ethereum.selectedAddress, // MetaMask injects address
+})
 
 export default function Quiz({ questions, onQuizSubmit }) {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [selectedAnswers, setSelectedAnswers] = useState(Array(questions.length).fill(-1))
   const [timeLeft, setTimeLeft] = useState(20)
   const [isSubmitting, setIsSubmitting] = useState(false)
-
-  // Correct usage of useContractWrite
-  const { data: submitData, error, writeContract } = useContractWrite()
-
-  // Read results after submission
-  const { data: resultsData } = useContractRead({
-    address: QUIZ_CONTRACT_ADDRESS,
-    abi: QUIZ_CONTRACT_ABI,
-    functionName: 'get_quiz_results',
-    enabled: !!submitData?.hash,
-  })
-
-  useWaitForTransactionReceipt({
-    hash: submitData?.hash,
-    onSuccess: () => {
-      // Results will be available via the read hook
-    },
-    onError: (err) => {
-      setIsSubmitting(false)
-      console.error('❌ Transaction failed:', err)
-    },
-  })
-
-  useEffect(() => {
-    if (resultsData) {
-      try {
-        // ✅ Don’t force JSON.parse unless your contract returns JSON
-        // If resultsData is already an object/array, just pass it through
-        onQuizSubmit(selectedAnswers, resultsData)
-        setIsSubmitting(false)
-      } catch (error) {
-        console.error('Error handling results:', error)
-      }
-    }
-  }, [resultsData, onQuizSubmit, selectedAnswers])
+  const [resultsData, setResultsData] = useState(null)
 
   const currentQuestion = questions[currentQuestionIndex]
 
@@ -74,20 +47,39 @@ export default function Quiz({ questions, onQuizSubmit }) {
     }
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setIsSubmitting(true)
     try {
-      writeContract({
+      console.log('🚀 Submitting quiz answers...')
+      const txHash = await client.writeContract({
         address: QUIZ_CONTRACT_ADDRESS,
-        abi: QUIZ_CONTRACT_ABI,
         functionName: 'submit_quiz',
         args: [selectedAnswers],
-        gas: BigInt(300000), // ✅ safe gas override
       })
-      console.log('✅ submit_quiz called successfully')
+
+      const receipt = await client.waitForTransactionReceipt({
+        hash: txHash,
+        status: TransactionStatus.ACCEPTED,
+      })
+
+      console.log('✅ Quiz submitted successfully:', receipt)
+
+      // Fetch results after submission
+      const result = await client.readContract({
+        address: QUIZ_CONTRACT_ADDRESS,
+        functionName: 'get_quiz_results',
+        args: [],
+      })
+
+      setResultsData(result)
+
+      // Pass results back to parent
+      const parsed = typeof result === 'string' ? JSON.parse(result) : result
+      onQuizSubmit(selectedAnswers, parsed)
     } catch (err) {
+      console.error('❌ Error submitting quiz:', err)
+    } finally {
       setIsSubmitting(false)
-      console.error('❌ Error calling submit_quiz:', err)
     }
   }
 
@@ -97,10 +89,9 @@ export default function Quiz({ questions, onQuizSubmit }) {
 
   return (
     <div className="max-w-4xl mx-auto">
-      {/* Render your quiz UI here */}
       <h2 className="text-2xl font-bold mb-4">{currentQuestion.question}</h2>
       <ul>
-        {currentQuestion.answers.map((answer, index) => (
+        {currentQuestion.options.map((option, index) => (
           <li key={index}>
             <button
               onClick={() => handleAnswerSelect(index)}
@@ -110,7 +101,7 @@ export default function Quiz({ questions, onQuizSubmit }) {
                   : 'bg-gray-700 text-gray-200'
               }`}
             >
-              {answer}
+              {option}
             </button>
           </li>
         ))}
